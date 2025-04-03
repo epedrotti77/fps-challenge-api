@@ -1,4 +1,3 @@
-# Etapa 1: build
 FROM node:20-alpine AS builder
 
 WORKDIR /app
@@ -9,7 +8,6 @@ RUN npm install
 COPY . .
 RUN npm run build
 
-# Etapa 2: imagem final
 FROM node:20-alpine
 
 WORKDIR /app
