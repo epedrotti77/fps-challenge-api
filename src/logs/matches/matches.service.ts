@@ -35,9 +35,61 @@ export class MatchesService {
       .map(([player, data]) => ({ player, ...data }))
       .sort((a, b) => b.frags - a.frags);
 
+    // 🥇 Arma preferida do vencedor
+    const topPlayer = ranking[0]?.player;
+    let preferredWeapon = null;
+
+    if (topPlayer) {
+      const topPlayerKills = kills.filter(k => k.killer === topPlayer);
+
+      const weaponCount = topPlayerKills.reduce((acc, kill) => {
+        acc[kill.weapon] = (acc[kill.weapon] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+
+      const sortedWeapons = Object.entries(weaponCount).sort((a, b) => b[1] - a[1]);
+      preferredWeapon = sortedWeapons[0]?.[0] || null;
+    }
+
     return {
       matchId,
       ranking,
+      topPlayer,
+      preferredWeapon,
     };
+  }
+
+  async getAllRankings() {
+    const matches = await this.matchModel.find().lean();
+    const allRankings = [];
+
+    for (const match of matches) {
+      const kills = await this.killModel.find({ matchId: match.matchId }).lean();
+
+      const stats: Record<string, { frags: number; deaths: number }> = {};
+
+      for (const kill of kills) {
+        const { killer, victim } = kill;
+
+        if (killer !== '<WORLD>') {
+          if (!stats[killer]) stats[killer] = { frags: 0, deaths: 0 };
+          stats[killer].frags += 1;
+        }
+
+        if (!stats[victim]) stats[victim] = { frags: 0, deaths: 0 };
+        stats[victim].deaths += 1;
+      }
+
+      const ranking = Object.entries(stats)
+        .map(([player, data]) => ({ player, ...data }))
+        .sort((a, b) => b.frags - a.frags);
+
+      allRankings.push({
+        matchId: match.matchId,
+        ranking,
+      });
+    }
+
+    return allRankings;
   }
 }

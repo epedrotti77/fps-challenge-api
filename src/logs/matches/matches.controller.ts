@@ -5,6 +5,11 @@ import { MatchesService } from './matches.service';
 export class MatchesController {
   constructor(private readonly matchesService: MatchesService) {}
 
+  @Get('ranking')
+  async getAllRankings() {
+    return this.matchesService.getAllRankings();
+  }
+
   @Get(':id/ranking')
   async getMatchRanking(@Param('id') matchId: string) {
     return this.matchesService.getMatchRanking(matchId);
