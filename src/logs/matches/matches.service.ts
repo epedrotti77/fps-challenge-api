@@ -40,15 +40,41 @@ export class MatchesService {
     let preferredWeapon = null;
 
     if (topPlayer) {
-      const topPlayerKills = kills.filter(k => k.killer === topPlayer);
+      const topPlayerKills = kills.filter((k) => k.killer === topPlayer);
 
-      const weaponCount = topPlayerKills.reduce((acc, kill) => {
-        acc[kill.weapon] = (acc[kill.weapon] || 0) + 1;
-        return acc;
-      }, {} as Record<string, number>);
+      const weaponCount = topPlayerKills.reduce(
+        (acc, kill) => {
+          acc[kill.weapon] = (acc[kill.weapon] || 0) + 1;
+          return acc;
+        },
+        {} as Record<string, number>,
+      );
 
-      const sortedWeapons = Object.entries(weaponCount).sort((a, b) => b[1] - a[1]);
+      const sortedWeapons = Object.entries(weaponCount).sort(
+        (a, b) => b[1] - a[1],
+      );
       preferredWeapon = sortedWeapons[0]?.[0] || null;
+    }
+
+    // 🔥 Streak (maior sequência de frags sem morrer)
+    let maxStreak = 0;
+    let maxStreakPlayer = null;
+
+    const currentStreaks: Record<string, number> = {};
+
+    for (const kill of kills) {
+      const { killer, victim } = kill;
+
+      if (killer !== '<WORLD>') {
+        currentStreaks[killer] = (currentStreaks[killer] || 0) + 1;
+
+        if (currentStreaks[killer] > maxStreak) {
+          maxStreak = currentStreaks[killer];
+          maxStreakPlayer = killer;
+        }
+      }
+
+      currentStreaks[victim] = 0;
     }
 
     return {
@@ -56,6 +82,10 @@ export class MatchesService {
       ranking,
       topPlayer,
       preferredWeapon,
+      bestStreak: {
+        player: maxStreakPlayer,
+        count: maxStreak,
+      },
     };
   }
 
@@ -64,7 +94,8 @@ export class MatchesService {
     const allRankings = [];
 
     for (const match of matches) {
-      const kills = await this.killModel.find({ matchId: match.matchId }).lean();
+      const matchId = match.matchId;
+      const kills = await this.killModel.find({ matchId }).lean();
 
       const stats: Record<string, { frags: number; deaths: number }> = {};
 
@@ -84,9 +115,54 @@ export class MatchesService {
         .map(([player, data]) => ({ player, ...data }))
         .sort((a, b) => b.frags - a.frags);
 
+      const topPlayer = ranking[0]?.player;
+      let preferredWeapon = null;
+
+      if (topPlayer) {
+        const topPlayerKills = kills.filter((k) => k.killer === topPlayer);
+
+        const weaponCount = topPlayerKills.reduce(
+          (acc, kill) => {
+            acc[kill.weapon] = (acc[kill.weapon] || 0) + 1;
+            return acc;
+          },
+          {} as Record<string, number>,
+        );
+
+        const sortedWeapons = Object.entries(weaponCount).sort(
+          (a, b) => b[1] - a[1],
+        );
+        preferredWeapon = sortedWeapons[0]?.[0] || null;
+      }
+
+      let maxStreak = 0;
+      let maxStreakPlayer = null;
+      const currentStreaks: Record<string, number> = {};
+
+      for (const kill of kills) {
+        const { killer, victim } = kill;
+
+        if (killer !== '<WORLD>') {
+          currentStreaks[killer] = (currentStreaks[killer] || 0) + 1;
+
+          if (currentStreaks[killer] > maxStreak) {
+            maxStreak = currentStreaks[killer];
+            maxStreakPlayer = killer;
+          }
+        }
+
+        currentStreaks[victim] = 0;
+      }
+
       allRankings.push({
-        matchId: match.matchId,
+        matchId,
         ranking,
+        topPlayer,
+        preferredWeapon,
+        bestStreak: {
+          player: maxStreakPlayer,
+          count: maxStreak,
+        },
       });
     }
 
