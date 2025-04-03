@@ -11,6 +11,36 @@ export class MatchesService {
     @InjectModel(Match.name) private matchModel: Model<Match>,
   ) {}
 
+  private checkFiveKillsOneMinute(kills: Kill[]): string[] {
+    const awardWinners = new Set<string>();
+    const grouped: Record<string, Date[]> = {};
+
+    for (const kill of kills) {
+      const { killer, timestamp } = kill;
+      if (killer === '<WORLD>') continue;
+
+      if (!grouped[killer]) grouped[killer] = [];
+      grouped[killer].push(new Date(timestamp));
+    }
+
+    for (const player in grouped) {
+      const times = grouped[player].sort((a, b) => a.getTime() - b.getTime());
+
+      for (let i = 0; i <= times.length - 5; i++) {
+        const first = times[i];
+        const fifth = times[i + 4];
+        const diff = (fifth.getTime() - first.getTime()) / 1000;
+
+        if (diff <= 60) {
+          awardWinners.add(player);
+          break;
+        }
+      }
+    }
+
+    return [...awardWinners];
+  }
+
   async getMatchRanking(matchId: string) {
     const match = await this.matchModel.findOne({ matchId }).lean();
     if (!match) return { message: 'Match not found' };
@@ -35,7 +65,6 @@ export class MatchesService {
       .map(([player, data]) => ({ player, ...data }))
       .sort((a, b) => b.frags - a.frags);
 
-    // 🥇 Arma preferida do vencedor
     const topPlayer = ranking[0]?.player;
     let preferredWeapon = null;
 
@@ -56,10 +85,8 @@ export class MatchesService {
       preferredWeapon = sortedWeapons[0]?.[0] || null;
     }
 
-    // 🔥 Streak (maior sequência de frags sem morrer)
     let maxStreak = 0;
     let maxStreakPlayer = null;
-
     const currentStreaks: Record<string, number> = {};
 
     for (const kill of kills) {
@@ -77,6 +104,16 @@ export class MatchesService {
       currentStreaks[victim] = 0;
     }
 
+    const noDeathsAward: string[] = [];
+    if (topPlayer) {
+      const winner = ranking.find((p) => p.player === topPlayer);
+      if (winner && winner.deaths === 0) {
+        noDeathsAward.push(topPlayer);
+      }
+    }
+
+    const fiveKillsAward = this.checkFiveKillsOneMinute(kills);
+
     return {
       matchId,
       ranking,
@@ -86,6 +123,8 @@ export class MatchesService {
         player: maxStreakPlayer,
         count: maxStreak,
       },
+      noDeathsAward,
+      fiveKillsAward,
     };
   }
 
@@ -154,6 +193,16 @@ export class MatchesService {
         currentStreaks[victim] = 0;
       }
 
+      const noDeathsAward: string[] = [];
+      if (topPlayer) {
+        const winner = ranking.find((p) => p.player === topPlayer);
+        if (winner && winner.deaths === 0) {
+          noDeathsAward.push(topPlayer);
+        }
+      }
+
+      const fiveKillsAward = this.checkFiveKillsOneMinute(kills);
+
       allRankings.push({
         matchId,
         ranking,
@@ -163,6 +212,8 @@ export class MatchesService {
           player: maxStreakPlayer,
           count: maxStreak,
         },
+        noDeathsAward,
+        fiveKillsAward,
       });
     }
 
