@@ -4,7 +4,9 @@ import { LogsModule } from './logs/logs.module';
 
 @Module({
   imports: [
-    MongooseModule.forRoot('mongodb://localhost:27017/game_log'),
+    MongooseModule.forRoot(
+      process.env.MONGO_URL || 'mongodb://localhost:27017/fps',
+    ),
     LogsModule,
   ],
 })

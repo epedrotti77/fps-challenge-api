@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { v4 as uuidv4 } from 'uuid';
-import { MatchData } from '../dtos/math.dto';
+import { MatchData } from '../dtos/match.dto';
 
 @Injectable()
 export class LogParserService {
@@ -11,7 +11,10 @@ export class LogParserService {
     let currentMatch: MatchData | null = null;
 
     for (const line of lines) {
-      const { timestamp, message } = this.parseLine(line);
+      const parsed = this.parseLine(line);
+      if (!parsed) continue;
+
+      const { timestamp, message } = parsed;
 
       if (this.isMatchStart(message)) {
         currentMatch = {
@@ -36,11 +39,14 @@ export class LogParserService {
 
   private parseLine(line: string) {
     const parts = line.split(' - ');
+    if (parts.length < 2) return null;
+
     const dateTimeStr = parts[0];
     const message = parts[1];
     const timestamp = new Date(
       dateTimeStr.replace(/(\d{2})\/(\d{2})\/(\d{4})/, '$2/$1/$3'),
     );
+
     return { timestamp, message };
   }
 
