@@ -5,6 +5,9 @@ import { LogsController } from './logs.controller';
 import { Match, MatchSchema } from './schemas/match.schema';
 import { Player, PlayerSchema } from './schemas/player.schema';
 import { Kill, KillSchema } from './schemas/kill.schema';
+import { ProcessLogUseCase } from './use-cases/process-log.usecase';
+import { MatchesController } from './matches/matches.controller';
+import { MatchesService } from './matches/matches.service';
 
 @Module({
   imports: [
@@ -14,7 +17,7 @@ import { Kill, KillSchema } from './schemas/kill.schema';
       { name: Kill.name, schema: KillSchema },
     ]),
   ],
-  controllers: [LogsController],
-  providers: [LogsService],
+  controllers: [LogsController, MatchesController],
+  providers: [LogsService, ProcessLogUseCase, MatchesService],
 })
 export class LogsModule {}
