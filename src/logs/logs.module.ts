@@ -10,6 +10,8 @@ import { MatchesController } from './matches/matches.controller';
 import { MatchesService } from './matches/matches.service';
 import { PlayersController } from './players/players.controller';
 import { PlayersService } from './players/players.service';
+import { MatchRankingService } from './matches-ranking/matches-ranking.service';
+import { LogParserService } from './parser/log-parser';
 
 @Module({
   imports: [
@@ -20,6 +22,6 @@ import { PlayersService } from './players/players.service';
     ]),
   ],
   controllers: [LogsController, MatchesController, PlayersController],
-  providers: [LogsService, ProcessLogUseCase, MatchesService, PlayersService],
+  providers: [LogsService, ProcessLogUseCase, MatchesService, PlayersService, MatchRankingService, LogParserService],
 })
 export class LogsModule {}

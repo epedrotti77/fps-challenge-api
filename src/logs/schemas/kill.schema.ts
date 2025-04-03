@@ -17,6 +17,12 @@ export class Kill extends Document {
 
   @Prop()
   matchId: string;
+
+  @Prop()
+  killerTeam?: string;
+
+  @Prop()
+  victimTeam?: string;
 }
 
 export const KillSchema = SchemaFactory.createForClass(Kill);

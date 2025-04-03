@@ -4,7 +4,7 @@ import { Model } from 'mongoose';
 import { Match } from '../schemas/match.schema';
 import { Player } from '../schemas/player.schema';
 import { Kill } from '../schemas/kill.schema';
-import { parseLog } from '../parser/log-parser';
+import { LogParserService } from '../parser/log-parser';
 
 @Injectable()
 export class ProcessLogUseCase {
@@ -12,27 +12,37 @@ export class ProcessLogUseCase {
     @InjectModel(Match.name) private matchModel: Model<Match>,
     @InjectModel(Player.name) private playerModel: Model<Player>,
     @InjectModel(Kill.name) private killModel: Model<Kill>,
+    private readonly logParserService: LogParserService,
   ) {}
 
   async execute(logContent: string) {
-    const matches = parseLog(logContent);
+    const matches = this.logParserService.parse(logContent);
 
     for (const match of matches) {
       const playersSet = new Set<string>();
-      const matchDoc = new this.matchModel({
+
+      for (const kill of match.kills) {
+        if (kill.killer !== '<WORLD>') playersSet.add(kill.killer);
+        playersSet.add(kill.victim);
+      }
+
+      if (playersSet.size > 20) {
+        throw new Error(
+          `A partida ${match.matchId} possui mais de 20 jogadores e não é permitida.`,
+        );
+      }
+
+      await this.matchModel.create({
         matchId: match.matchId,
         startTime: match.startTime,
         endTime: match.endTime,
-        players: [],
+        players: Array.from(playersSet),
       });
-
-      await matchDoc.save();
 
       for (const kill of match.kills) {
         const { killer, victim, weapon, timestamp } = kill;
 
         if (killer !== '<WORLD>') {
-          playersSet.add(killer);
           await this.playerModel.updateOne(
             { name: killer },
             { $inc: { frags: 1 } },
@@ -40,7 +50,6 @@ export class ProcessLogUseCase {
           );
         }
 
-        playersSet.add(victim);
         await this.playerModel.updateOne(
           { name: victim },
           { $inc: { deaths: 1 } },
@@ -55,17 +64,6 @@ export class ProcessLogUseCase {
           matchId: match.matchId,
         });
       }
-
-      if (playersSet.size > 20) {
-        throw new Error(
-          `A partida ${match.matchId} possui mais de 20 jogadores e não é permitida.`,
-        );
-      }
-
-      await this.matchModel.updateOne(
-        { matchId: match.matchId },
-        { $set: { players: Array.from(playersSet) } },
-      );
     }
   }
 }

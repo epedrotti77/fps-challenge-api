@@ -3,217 +3,45 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Kill } from '../schemas/kill.schema';
 import { Match } from '../schemas/match.schema';
+import { MatchRankingService } from '../matches-ranking/matches-ranking.service';
+import { MatchRankingDto } from '../dtos/match-ranking.dto';
 
 @Injectable()
 export class MatchesService {
   constructor(
     @InjectModel(Kill.name) private killModel: Model<Kill>,
     @InjectModel(Match.name) private matchModel: Model<Match>,
+    private readonly matchRankingService: MatchRankingService,
   ) {}
 
-  private checkFiveKillsOneMinute(kills: Kill[]): string[] {
-    const awardWinners = new Set<string>();
-    const grouped: Record<string, Date[]> = {};
-
-    for (const kill of kills) {
-      const { killer, timestamp } = kill;
-      if (killer === '<WORLD>') continue;
-
-      if (!grouped[killer]) grouped[killer] = [];
-      grouped[killer].push(new Date(timestamp));
-    }
-
-    for (const player in grouped) {
-      const times = grouped[player].sort((a, b) => a.getTime() - b.getTime());
-
-      for (let i = 0; i <= times.length - 5; i++) {
-        const first = times[i];
-        const fifth = times[i + 4];
-        const diff = (fifth.getTime() - first.getTime()) / 1000;
-
-        if (diff <= 60) {
-          awardWinners.add(player);
-          break;
-        }
-      }
-    }
-
-    return [...awardWinners];
-  }
-
-  async getMatchRanking(matchId: string) {
+  async getMatchRanking(
+    matchId: string,
+  ): Promise<MatchRankingDto | { message: string }> {
     const match = await this.matchModel.findOne({ matchId }).lean();
     if (!match) return { message: 'Match not found' };
 
     const kills = await this.killModel.find({ matchId }).lean();
-
-    const stats: Record<string, { frags: number; deaths: number }> = {};
-
-    for (const kill of kills) {
-      const { killer, victim } = kill;
-
-      if (killer !== '<WORLD>') {
-        if (!stats[killer]) stats[killer] = { frags: 0, deaths: 0 };
-        stats[killer].frags += 1;
-      }
-
-      if (!stats[victim]) stats[victim] = { frags: 0, deaths: 0 };
-      stats[victim].deaths += 1;
-    }
-
-    const ranking = Object.entries(stats)
-      .map(([player, data]) => ({ player, ...data }))
-      .sort((a, b) => b.frags - a.frags);
-
-    const topPlayer = ranking[0]?.player;
-    let preferredWeapon = null;
-
-    if (topPlayer) {
-      const topPlayerKills = kills.filter((k) => k.killer === topPlayer);
-
-      const weaponCount = topPlayerKills.reduce(
-        (acc, kill) => {
-          acc[kill.weapon] = (acc[kill.weapon] || 0) + 1;
-          return acc;
-        },
-        {} as Record<string, number>,
-      );
-
-      const sortedWeapons = Object.entries(weaponCount).sort(
-        (a, b) => b[1] - a[1],
-      );
-      preferredWeapon = sortedWeapons[0]?.[0] || null;
-    }
-
-    let maxStreak = 0;
-    let maxStreakPlayer = null;
-    const currentStreaks: Record<string, number> = {};
-
-    for (const kill of kills) {
-      const { killer, victim } = kill;
-
-      if (killer !== '<WORLD>') {
-        currentStreaks[killer] = (currentStreaks[killer] || 0) + 1;
-
-        if (currentStreaks[killer] > maxStreak) {
-          maxStreak = currentStreaks[killer];
-          maxStreakPlayer = killer;
-        }
-      }
-
-      currentStreaks[victim] = 0;
-    }
-
-    const noDeathsAward: string[] = [];
-    if (topPlayer) {
-      const winner = ranking.find((p) => p.player === topPlayer);
-      if (winner && winner.deaths === 0) {
-        noDeathsAward.push(topPlayer);
-      }
-    }
-
-    const fiveKillsAward = this.checkFiveKillsOneMinute(kills);
+    const rankingData = this.matchRankingService.calculate(kills);
 
     return {
       matchId,
-      ranking,
-      topPlayer,
-      preferredWeapon,
-      bestStreak: {
-        player: maxStreakPlayer,
-        count: maxStreak,
-      },
-      noDeathsAward,
-      fiveKillsAward,
+      ...rankingData,
     };
   }
 
-  async getAllRankings() {
+  async getAllRankings(): Promise<MatchRankingDto[]> {
     const matches = await this.matchModel.find().lean();
     const allRankings = [];
 
     for (const match of matches) {
-      const matchId = match.matchId;
-      const kills = await this.killModel.find({ matchId }).lean();
-
-      const stats: Record<string, { frags: number; deaths: number }> = {};
-
-      for (const kill of kills) {
-        const { killer, victim } = kill;
-
-        if (killer !== '<WORLD>') {
-          if (!stats[killer]) stats[killer] = { frags: 0, deaths: 0 };
-          stats[killer].frags += 1;
-        }
-
-        if (!stats[victim]) stats[victim] = { frags: 0, deaths: 0 };
-        stats[victim].deaths += 1;
-      }
-
-      const ranking = Object.entries(stats)
-        .map(([player, data]) => ({ player, ...data }))
-        .sort((a, b) => b.frags - a.frags);
-
-      const topPlayer = ranking[0]?.player;
-      let preferredWeapon = null;
-
-      if (topPlayer) {
-        const topPlayerKills = kills.filter((k) => k.killer === topPlayer);
-
-        const weaponCount = topPlayerKills.reduce(
-          (acc, kill) => {
-            acc[kill.weapon] = (acc[kill.weapon] || 0) + 1;
-            return acc;
-          },
-          {} as Record<string, number>,
-        );
-
-        const sortedWeapons = Object.entries(weaponCount).sort(
-          (a, b) => b[1] - a[1],
-        );
-        preferredWeapon = sortedWeapons[0]?.[0] || null;
-      }
-
-      let maxStreak = 0;
-      let maxStreakPlayer = null;
-      const currentStreaks: Record<string, number> = {};
-
-      for (const kill of kills) {
-        const { killer, victim } = kill;
-
-        if (killer !== '<WORLD>') {
-          currentStreaks[killer] = (currentStreaks[killer] || 0) + 1;
-
-          if (currentStreaks[killer] > maxStreak) {
-            maxStreak = currentStreaks[killer];
-            maxStreakPlayer = killer;
-          }
-        }
-
-        currentStreaks[victim] = 0;
-      }
-
-      const noDeathsAward: string[] = [];
-      if (topPlayer) {
-        const winner = ranking.find((p) => p.player === topPlayer);
-        if (winner && winner.deaths === 0) {
-          noDeathsAward.push(topPlayer);
-        }
-      }
-
-      const fiveKillsAward = this.checkFiveKillsOneMinute(kills);
+      const kills = await this.killModel
+        .find({ matchId: match.matchId })
+        .lean();
+      const rankingData = this.matchRankingService.calculate(kills);
 
       allRankings.push({
-        matchId,
-        ranking,
-        topPlayer,
-        preferredWeapon,
-        bestStreak: {
-          player: maxStreakPlayer,
-          count: maxStreak,
-        },
-        noDeathsAward,
-        fiveKillsAward,
+        matchId: match.matchId,
+        ...rankingData,
       });
     }
 
